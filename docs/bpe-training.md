@@ -42,3 +42,24 @@ disabled on CPU. Gradient accumulation divides each microbatch loss by the
 number of microbatches before backward; `--steps` counts optimizer updates.
 The entire tokenized corpus is currently held in CPU RAM. A future release
 will add streaming datasets, validation splits, and larger-model optimizations.
+
+## V0.8 — warmup and cosine decay
+
+Optional learning-rate scheduling helps stabilize early training and reduce
+the learning rate as training progresses:
+
+```powershell
+python -m corvusai.training.bpe_trainer --corpus data --tokenizer checkpoints/tokenizer.json --output checkpoints/bpe --steps 1000 --device cuda --mixed-precision --gradient-accumulation 8 --warmup-steps 50 --decay-steps 1000
+```
+
+The schedule starts with linear warmup, then cosine-decays from 3e-4 to
+3e-5 by `--decay-steps`. With both flags omitted, learning rate remains
+constant, preserving V0.6 defaults. Scheduling parameters are saved and
+validated on resume. JSON training logs include the learning rate.
+
+The existing `nn.MultiheadAttention(..., need_weights=False)` already
+delegates to PyTorch's optimized scaled dot-product attention when its
+backend supports it. V0.8 deliberately preserves its parameter names,
+checkpoint layout, and causal mask rather than replacing it with an
+incompatible attention implementation. Actual speedup depends on hardware,
+PyTorch backend and sequence length; no speedup is claimed without benchmarks.
