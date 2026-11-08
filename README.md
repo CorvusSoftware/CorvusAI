@@ -10,11 +10,10 @@
 
 *CorvusBrain · CorvusCode*
 
-[![CI](https://img.shields.io/github/actions/workflow/status/CorvusSoftware/CorvusAI/ci.yml?branch=main&style=plastic&label=CI)](https://github.com/CorvusSoftware/CorvusAI/actions)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0--only-blue?style=plastic)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/CorvusSoftware/CorvusAI/ci.yml?branch=main&style=plastic&label=CI&logo=github&logoColor=white)](https://github.com/CorvusSoftware/CorvusAI/actions)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white&style=plastic)](pyproject.toml)
 [![PyTorch](https://img.shields.io/badge/Framework-PyTorch-EE4C2C?logo=pytorch&logoColor=white&style=plastic)](https://pytorch.org/)
-[![Contributions welcome](https://img.shields.io/badge/Contributions-welcome-brightgreen?style=plastic)](CONTRIBUTING.md)
+[![Licence AGPL-3.0](https://img.shields.io/badge/Licence-AGPL--3.0-663399?style=plastic&logo=gnu&logoColor=white)](LICENSE)
 
 [Getting started](#getting-started) · [Architecture](docs/architecture.md) · [Training](docs/training.md) · [Contributing](CONTRIBUTING.md)
 
