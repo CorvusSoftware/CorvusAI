@@ -117,12 +117,21 @@ def train_bpe(
             "warmup_steps": warmup_steps,
             "decay_steps": decay_steps,
         }
+        if all(not state.get(key, 0) for key in ("warmup_steps", "decay_steps")):
+            expected = {key: value for key, value in expected.items()
+                        if key not in ("warmup_steps", "decay_steps")}
         if any(state.get(key) != value for key, value in expected.items()):
             raise ValueError("Checkpoint training configuration, corpus or tokenizer mismatch")
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         scaler.load_state_dict(state["scaler"])
-        scheduler.load_state_dict(state["scheduler"])
+        if "scheduler" in state:
+            scheduler.load_state_dict(state["scheduler"])
+        elif warmup_steps or decay_steps:
+            raise ValueError("Cannot resume scheduled training from a legacy checkpoint")
+        else:
+            scheduler.last_epoch = int(state["step"])
+            scheduler._step_count = int(state["step"]) + 1
         completed = int(state["step"])
         torch.set_rng_state(state["cpu_rng"].cpu())
         if target.type == "cuda" and state.get("cuda_rng") is not None:
