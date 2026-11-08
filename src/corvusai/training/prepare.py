@@ -54,7 +54,7 @@ def prepare(
         raise ValueError("An explicit --licenses JSON file is required for V0.7 preparation")
     declarations = json.loads(licenses.read_text(encoding="utf-8"))
     if not isinstance(declarations, dict):
-        raise ValueError("License declarations must map relative paths to SPDX identifiers")
+        raise TypeError("License declarations must map relative paths to SPDX identifiers")
     paths = sorted(p for p in directory.rglob("*.py") if p.is_file() and not p.is_symlink())
     seen_exact: set[str] = set()
     seen_normalized: set[str] = set()
