@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible issue
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include commands, expected behavior, actual behavior and relevant logs.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Python, PyTorch, OS, GPU and CUDA versions.
