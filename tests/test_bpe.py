@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from corvusai.tokenization.bpe import ByteBPE
 from corvusai.tokenization.benchmark import benchmark
+from corvusai.tokenization.bpe import ByteBPE
 
 
 def test_bpe_is_deterministic_and_roundtrips(tmp_path: Path):
-    documents = [b"def foo():\n    return 42\n" * 8, "café 🦅".encode("utf-8") * 4]
+    documents = [b"def foo():\n    return 42\n" * 8, "café 🦅".encode() * 4]
     first = ByteBPE.train(documents, merges=30)
     second = ByteBPE.train(documents, merges=30)
     assert first.merges == second.merges
