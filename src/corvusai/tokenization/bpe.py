@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import argparse
 import json
-from itertools import pairwise
 from collections import Counter
+from itertools import pairwise
 from pathlib import Path
 
 
@@ -90,7 +90,7 @@ class ByteBPE:
                                    indent=2) + "\n", encoding="utf-8")
 
     @classmethod
-    def load(cls, path: Path) -> "ByteBPE":
+    def load(cls, path: Path) -> ByteBPE:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if payload.get("format") != "corvus-byte-bpe-v1":
             raise ValueError("Unsupported tokenizer format")
