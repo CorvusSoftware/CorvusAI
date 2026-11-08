@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from itertools import pairwise
 from collections import Counter
 from pathlib import Path
 
@@ -31,7 +32,7 @@ class ByteBPE:
         while len(tokens) > 1:
             candidates = (
                 (self.ranks[(a, b)], i)
-                for i, (a, b) in enumerate(zip(tokens, tokens[1:]))
+                for i, (a, b) in enumerate(pairwise(tokens))
                 if (a, b) in self.ranks
             )
             match = min(candidates, default=None)
@@ -51,7 +52,7 @@ class ByteBPE:
         return self.decode_bytes(tokens).decode("utf-8")
 
     @classmethod
-    def train(cls, documents: list[bytes], merges: int = 256) -> "ByteBPE":
+    def train(cls, documents: list[bytes], merges: int = 256) -> ByteBPE:
         if merges < 0:
             raise ValueError("merges must be nonnegative")
         if not documents or not any(documents):
@@ -61,7 +62,7 @@ class ByteBPE:
         for _ in range(merges):
             counts: Counter[tuple[int, int]] = Counter()
             for sequence in sequences:
-                counts.update(zip(sequence, sequence[1:]))
+                counts.update(pairwise(sequence))
             if not counts:
                 break
             # Stable tie-breaking independent of hash iteration order.
