@@ -37,3 +37,5 @@ Licensed under the **GNU Affero General Public License v3.0 only**
 ([AGPL-3.0-only](LICENSE)). Contributions are accepted under the same license.
 Third-party training datasets and model artifacts may have separate licenses;
 review those before use.
+
+See [V0.5 BPE training and inference](docs/bpe-training.md) for tokenizer-bound checkpoints.
