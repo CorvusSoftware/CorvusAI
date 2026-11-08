@@ -8,6 +8,7 @@ from pathlib import Path
 
 import torch
 
+from corvusai.models.modern import ModernConfig, ModernCorvusTransformer
 from corvusai.models.transformer import CorvusTransformer, ModelConfig
 from corvusai.tokenization.bpe import ByteBPE
 
@@ -26,9 +27,12 @@ class BrainSession:
         if self.device.type == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA requested but unavailable")
         state = torch.load(checkpoint, map_location=self.device, weights_only=True)
-        self.config = ModelConfig(**state["config"])
+        self.modern = state.get("format") == "corvus-modern-bpe-checkpoint-v1"
+        self.config = (ModernConfig(**state["config"]) if self.modern
+                       else ModelConfig(**state["config"]))
         self.tokenizer = None
-        if state.get("format") in ("corvus-bpe-checkpoint-v1", "corvus-bpe-checkpoint-v2"):
+        if state.get("format") in ("corvus-bpe-checkpoint-v1", "corvus-bpe-checkpoint-v2",
+                                    "corvus-modern-bpe-checkpoint-v1"):
             if tokenizer_path is None:
                 raise ValueError("BPE checkpoint requires --tokenizer")
             digest = hashlib.sha256(tokenizer_path.read_bytes()).hexdigest()
@@ -39,7 +43,8 @@ class BrainSession:
                 raise ValueError("Tokenizer vocabulary does not match checkpoint")
         elif self.config.vocab_size != 256:
             raise ValueError("Legacy checkpoint must use the 256-byte vocabulary")
-        self.model = CorvusTransformer(self.config).to(self.device)
+        self.model = (ModernCorvusTransformer(self.config) if self.modern
+                      else CorvusTransformer(self.config)).to(self.device)
         self.model.load_state_dict(state["model"])
         self.model.eval()
 
@@ -55,16 +60,40 @@ class BrainSession:
                     else list(prompt.encode("utf-8")))
         generator = torch.Generator(device=self.device).manual_seed(seed)
         with torch.inference_mode():
+            cache = None
             for _ in range(max_new_tokens):
-                context = torch.tensor(
-                    [sequence[-self.config.context_length:]],
-                    dtype=torch.long, device=self.device,
-                )
-                logits = self.model(context)[0, -1] / temperature
+                if self.modern:
+                    # Rebuild the cache when the context window is full.
+                    # RoPE positions are relative to the active context.
+                    if cache is None or len(sequence) > self.config.context_length:
+                        context = sequence[-self.config.context_length:]
+                        logits, cache = self.model(
+                            torch.tensor([context], dtype=torch.long, device=self.device),
+                            use_cache=True,
+                        )
+                    else:
+                        logits, cache = self.model(
+                            torch.tensor([[sequence[-1]]], dtype=torch.long,
+                                         device=self.device),
+                            cache=cache, use_cache=True,
+                        )
+                    last_logits = logits[0, -1]
+                else:
+                    context = torch.tensor(
+                        [sequence[-self.config.context_length:]],
+                        dtype=torch.long, device=self.device,
+                    )
+                    last_logits = self.model(context)[0, -1]
                 next_token = int(torch.multinomial(
-                    torch.softmax(logits, dim=-1), 1, generator=generator,
+                    torch.softmax(last_logits / temperature, dim=-1),
+                    1, generator=generator,
                 ))
                 sequence.append(next_token)
+                if self.modern and cache is not None:
+                    # Cache covers all tokens except the newly sampled one.
+                    # Next iteration can append only while there is space.
+                    if cache[0][0].shape[2] >= self.config.context_length:
+                        cache = None
         data = (self.tokenizer.decode_bytes(sequence) if self.tokenizer
                 else bytes(sequence))
         return data.decode("utf-8", errors="replace")
