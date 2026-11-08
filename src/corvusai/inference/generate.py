@@ -31,7 +31,7 @@ def generate(
     state = torch.load(checkpoint, map_location=target, weights_only=True)
     config = ModelConfig(**state["config"])
     tokenizer = None
-    if state.get("format") == "corvus-bpe-checkpoint-v1":
+    if state.get("format") in ("corvus-bpe-checkpoint-v1", "corvus-bpe-checkpoint-v2"):
         if tokenizer_path is None:
             raise ValueError("BPE checkpoint requires --tokenizer")
         digest = hashlib.sha256(tokenizer_path.read_bytes()).hexdigest()

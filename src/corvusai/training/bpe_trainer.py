@@ -1,4 +1,4 @@
-"""Train a tiny model on BPE IDs with a tokenizer-bound checkpoint."""
+"""Reproducible multi-file BPE pretraining with resumable checkpoints."""
 
 from __future__ import annotations
 
@@ -6,13 +6,50 @@ import argparse
 import hashlib
 import json
 import os
+import random
 from pathlib import Path
 
 import torch
 
 from corvusai.models.transformer import CorvusTransformer, ModelConfig
 from corvusai.tokenization.bpe import ByteBPE
-from corvusai.training.dataset import sample_batch
+
+
+def _load_documents(corpus: Path, tokenizer: ByteBPE, context_length: int) -> tuple[list[torch.Tensor], str]:
+    paths = sorted(corpus.rglob("*.py")) if corpus.is_dir() else [corpus]
+    if not paths or any(not path.is_file() for path in paths):
+        raise ValueError("Corpus must be a file or a directory containing Python files")
+    digest = hashlib.sha256()
+    documents: list[torch.Tensor] = []
+    for path in paths:
+        data = path.read_bytes()
+        relative = path.relative_to(corpus) if corpus.is_dir() else Path(path.name)
+        name = relative.as_posix().encode("utf-8")
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+        ids = tokenizer.encode_bytes(data)
+        if len(ids) > context_length:
+            documents.append(torch.tensor(ids, dtype=torch.long))
+    if not documents:
+        raise ValueError("Corpus has too few BPE tokens for context length")
+    return documents, digest.hexdigest()
+
+
+def _sample(documents: list[torch.Tensor], batch_size: int, context_length: int,
+            target: torch.device) -> torch.Tensor:
+    # Choose a valid window uniformly, without crossing document boundaries.
+    counts = [len(doc) - context_length for doc in documents]
+    cumulative = torch.tensor(counts).cumsum(0)
+    draws = torch.randint(0, int(cumulative[-1]), (batch_size,))
+    rows = []
+    for draw in draws.tolist():
+        doc_index = int(torch.searchsorted(cumulative, draw, right=True))
+        previous = int(cumulative[doc_index - 1]) if doc_index else 0
+        start = draw - previous
+        rows.append(documents[doc_index][start:start + context_length + 1])
+    return torch.stack(rows).to(target)
 
 
 def train_bpe(
@@ -25,46 +62,95 @@ def train_bpe(
     batch_size: int = 4,
     seed: int = 42,
     device: str = "cpu",
+    resume: bool = False,
+    mixed_precision: bool = False,
+    gradient_accumulation: int = 1,
 ) -> list[float]:
-    if steps < 1 or context_length < 2 or batch_size < 1:
-        raise ValueError("Invalid training dimensions")
+    if steps < 1 or context_length < 2 or batch_size < 1 or gradient_accumulation < 1:
+        raise ValueError("Invalid training dimensions or gradient accumulation")
+    target = torch.device(device)
+    if target.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA requested but unavailable")
     tokenizer_bytes = tokenizer_path.read_bytes()
     tokenizer = ByteBPE.load(tokenizer_path)
-    corpus_bytes = corpus.read_bytes()
-    ids = tokenizer.encode_bytes(corpus_bytes)
-    if len(ids) <= context_length:
-        raise ValueError("Corpus has too few BPE tokens for context length")
+    documents, corpus_sha256 = _load_documents(corpus, tokenizer, context_length)
+    tokenizer_sha256 = hashlib.sha256(tokenizer_bytes).hexdigest()
+    random.seed(seed)
     torch.manual_seed(seed)
-    target = torch.device(device)
+    if target.type == "cuda":
+        torch.cuda.manual_seed_all(seed)
     config = ModelConfig(vocab_size=tokenizer.vocab_size, context_length=context_length)
     model = CorvusTransformer(config).to(target)
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
-    data = torch.tensor(ids, dtype=torch.long)
+    use_amp = mixed_precision and target.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     output.mkdir(parents=True, exist_ok=True)
+    checkpoint = output / "latest.pt"
+    completed = 0
+    if resume:
+        if not checkpoint.is_file():
+            raise FileNotFoundError(checkpoint)
+        # Only resume from checkpoints produced locally and trusted by the operator.
+        state = torch.load(checkpoint, map_location=target, weights_only=True)
+        if state.get("format") != "corvus-bpe-checkpoint-v2":
+            raise ValueError("Resume requires a V0.6 BPE checkpoint")
+        expected = {
+            "config": vars(config),
+            "tokenizer_sha256": tokenizer_sha256,
+            "corpus_sha256": corpus_sha256,
+            "batch_size": batch_size,
+            "gradient_accumulation": gradient_accumulation,
+            "mixed_precision": use_amp,
+        }
+        if any(state.get(key) != value for key, value in expected.items()):
+            raise ValueError("Checkpoint training configuration, corpus or tokenizer mismatch")
+        model.load_state_dict(state["model"])
+        optimizer.load_state_dict(state["optimizer"])
+        scaler.load_state_dict(state["scaler"])
+        completed = int(state["step"])
+        torch.set_rng_state(state["cpu_rng"].cpu())
+        if target.type == "cuda" and state.get("cuda_rng") is not None:
+            torch.cuda.set_rng_state(state["cuda_rng"].cpu(), device=target)
     losses: list[float] = []
-    for step in range(steps):
-        batch = sample_batch(data, batch_size, context_length, target)
+    model.train()
+    for step in range(completed, steps):
         optimizer.zero_grad(set_to_none=True)
-        loss = model.loss(batch)
-        if not torch.isfinite(loss):
-            raise FloatingPointError(f"Nonfinite loss at step {step + 1}")
-        loss.backward()
+        accumulated = 0.0
+        for _ in range(gradient_accumulation):
+            batch = _sample(documents, batch_size, context_length, target)
+            with torch.autocast(device_type=target.type, dtype=torch.float16, enabled=use_amp):
+                loss = model.loss(batch)
+            if not torch.isfinite(loss):
+                raise FloatingPointError(f"Nonfinite loss at step {step + 1}")
+            accumulated += float(loss.detach().cpu()) / gradient_accumulation
+            scaler.scale(loss / gradient_accumulation).backward()
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
-        losses.append(float(loss.detach().cpu()))
+        scaler.step(optimizer)
+        scaler.update()
+        losses.append(accumulated)
         state = {
-            "format": "corvus-bpe-checkpoint-v1",
+            "format": "corvus-bpe-checkpoint-v2",
             "config": vars(config),
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
+            "scaler": scaler.state_dict(),
             "step": step + 1,
-            "tokenizer_sha256": hashlib.sha256(tokenizer_bytes).hexdigest(),
-            "corpus_sha256": hashlib.sha256(corpus_bytes).hexdigest(),
+            "tokenizer_sha256": tokenizer_sha256,
+            "corpus_sha256": corpus_sha256,
+            "batch_size": batch_size,
+            "gradient_accumulation": gradient_accumulation,
+            "mixed_precision": use_amp,
+            "cpu_rng": torch.get_rng_state(),
+            "cuda_rng": torch.cuda.get_rng_state(target) if target.type == "cuda" else None,
         }
         temporary = output / "latest.tmp"
         torch.save(state, temporary)
-        os.replace(temporary, output / "latest.pt")
-        print(json.dumps({"step": step + 1, "train_loss": losses[-1]}), flush=True)
+        os.replace(temporary, checkpoint)
+        metrics = {"step": step + 1, "train_loss": accumulated, "device": str(target)}
+        if target.type == "cuda":
+            metrics["peak_vram_mib"] = round(torch.cuda.max_memory_allocated(target) / 2**20, 1)
+        print(json.dumps(metrics), flush=True)
     return losses
 
 
@@ -78,10 +164,15 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--mixed-precision", action="store_true")
+    parser.add_argument("--gradient-accumulation", type=int, default=1)
     args = parser.parse_args()
     train_bpe(args.corpus, args.tokenizer, args.output, steps=args.steps,
               context_length=args.context_length, batch_size=args.batch_size,
-              seed=args.seed, device=args.device)
+              seed=args.seed, device=args.device, resume=args.resume,
+              mixed_precision=args.mixed_precision,
+              gradient_accumulation=args.gradient_accumulation)
 
 
 if __name__ == "__main__":
