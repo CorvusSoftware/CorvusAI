@@ -67,7 +67,9 @@ inference shell:
 .\.venv\Scripts\python.exe -m corvusai.inference.brain --checkpoint checkpoints/bpe/latest.pt --tokenizer checkpoints/tokenizer.json --device cpu
 ```
 
-See [V1.0 quickstart](docs/v1.0.md) for CUDA, one-shot mode, and limitations.
+See [V1.0 quickstart](docs/v1.0.md) for CUDA and one-shot mode, or
+[V1.2 integration](docs/modern-integration.md) to train and run the modern
+RoPE/GQA architecture with KV caching.
 This is a research interface, not a pretrained or production-ready assistant.
 
 ## Documentation
@@ -81,6 +83,10 @@ The README is deliberately **version-neutral**. Detailed features, experiments, 
 | Tokenization and data preparation | [Tokenizer guide](docs/tokenizer.md) |
 | Local text generation | [Inference guide](docs/inference.md) |
 | BPE training and generation | [BPE integration](docs/bpe-training.md) |
+| Modern Transformer architecture | [V1.1 architecture](docs/modern-architecture.md) |
+| Modern BPE training and KV-cache inference | [V1.2 integration](docs/modern-integration.md) |
+| Dataset preparation and licensing | [Dataset guide](docs/dataset.md) |
+| Offline code evaluation | [Code evaluation](docs/code-evaluation.md) |
 
 ## Community and security
 
