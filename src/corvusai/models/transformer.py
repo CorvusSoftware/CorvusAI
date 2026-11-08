@@ -44,7 +44,8 @@ class DecoderBlock(nn.Module):
 
 
 class CorvusTransformer(nn.Module):
-    def __init__(self, config: ModelConfig = ModelConfig()) -> None:
+    def __init__(self, config: ModelConfig | None = None) -> None:
+        config = config if config is not None else ModelConfig()
         super().__init__()
         self.config = config
         self.tokens = nn.Embedding(config.vocab_size, config.width)

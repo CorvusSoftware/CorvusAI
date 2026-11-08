@@ -16,7 +16,7 @@ def test_prepare_deduplicates_and_splits(tmp_path: Path):
     manifest = prepare(source, output)
     assert output.exists()
     assert len(manifest["train"]) + len(manifest["validation"]) == 3
-    assert set(x["sha256"] for x in manifest["train"]).isdisjoint(
+    assert {x["sha256"] for x in manifest["train"]}.isdisjoint(
         x["sha256"] for x in manifest["validation"]
     )
 
