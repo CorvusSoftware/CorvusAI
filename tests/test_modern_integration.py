@@ -16,8 +16,9 @@ def test_modern_training_resume_and_cached_inference(tmp_path: Path):
     tokenizer_path = tmp_path / "tokenizer.json"
     ByteBPE.train([corpus.read_bytes()], merges=8).save(tokenizer_path)
     output = tmp_path / "modern"
-    kwargs = dict(context_length=8, batch_size=1, seed=11, architecture="modern",
-                  width=16, heads=2, layers=1, kv_heads=1)
+    kwargs = {"context_length": 8, "batch_size": 1, "seed": 11,
+              "architecture": "modern", "width": 16, "heads": 2,
+              "layers": 1, "kv_heads": 1}
     train_bpe(corpus, tokenizer_path, output, steps=1, **kwargs)
     checkpoint = output / "latest.pt"
     state = torch.load(checkpoint, weights_only=True)
@@ -36,8 +37,8 @@ def test_architecture_mismatch_rejected(tmp_path: Path):
     tokenizer_path = tmp_path / "tokenizer.json"
     ByteBPE.train([corpus.read_bytes()], merges=4).save(tokenizer_path)
     output = tmp_path / "modern"
-    kwargs = dict(context_length=8, batch_size=1, width=16,
-                  heads=2, layers=1, kv_heads=1)
+    kwargs = {"context_length": 8, "batch_size": 1, "width": 16,
+              "heads": 2, "layers": 1, "kv_heads": 1}
     train_bpe(corpus, tokenizer_path, output, steps=1, architecture="modern", **kwargs)
     with pytest.raises(ValueError, match="checkpoint"):
         train_bpe(corpus, tokenizer_path, output, steps=2, resume=True,
