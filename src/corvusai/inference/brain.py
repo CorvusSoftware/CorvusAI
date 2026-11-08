@@ -65,7 +65,7 @@ class BrainSession:
                 if self.modern:
                     # Rebuild the cache when the context window is full.
                     # RoPE positions are relative to the active context.
-                    if cache is None or len(sequence) > self.config.context_length:
+                    if cache is None:
                         context = sequence[-self.config.context_length:]
                         logits, cache = self.model(
                             torch.tensor([context], dtype=torch.long, device=self.device),
