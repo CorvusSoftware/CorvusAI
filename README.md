@@ -25,6 +25,7 @@ Resume with `--steps 40 --resume` to train to step 40.
 
 - [Architecture and roadmap](docs/architecture.md)
 - [Training guide](docs/training.md)
+- [V0.3 tokenizer and dataset preparation](docs/tokenizer.md)
 - [Contributor guide](CONTRIBUTING.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
 - [Security policy](SECURITY.md)
