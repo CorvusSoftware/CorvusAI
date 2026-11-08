@@ -12,6 +12,7 @@ from pathlib import Path
 
 import torch
 
+from corvusai.models.modern import ModernConfig, ModernCorvusTransformer
 from corvusai.models.transformer import CorvusTransformer, ModelConfig
 from corvusai.tokenization.bpe import ByteBPE
 
@@ -68,7 +69,14 @@ def train_bpe(
     gradient_accumulation: int = 1,
     warmup_steps: int = 0,
     decay_steps: int = 0,
+    architecture: str = "legacy",
+    width: int = 128,
+    heads: int = 4,
+    layers: int = 2,
+    kv_heads: int = 2,
 ) -> list[float]:
+    if architecture not in ("legacy", "modern"):
+        raise ValueError("Unknown architecture")
     if steps < 1 or context_length < 2 or batch_size < 1 or gradient_accumulation < 1:
         raise ValueError("Invalid training dimensions or gradient accumulation")
     if warmup_steps < 0 or decay_steps < warmup_steps:
@@ -84,8 +92,15 @@ def train_bpe(
     torch.manual_seed(seed)
     if target.type == "cuda":
         torch.cuda.manual_seed_all(seed)
-    config = ModelConfig(vocab_size=tokenizer.vocab_size, context_length=context_length)
-    model = CorvusTransformer(config).to(target)
+    if architecture == "modern":
+        config = ModernConfig(vocab_size=tokenizer.vocab_size,
+                              context_length=context_length, width=width,
+                              heads=heads, layers=layers, kv_heads=kv_heads)
+        model = ModernCorvusTransformer(config).to(target)
+    else:
+        config = ModelConfig(vocab_size=tokenizer.vocab_size,
+                             context_length=context_length)
+        model = CorvusTransformer(config).to(target)
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
     def lr_multiplier(step: int) -> float:
         if warmup_steps and step < warmup_steps:
@@ -105,7 +120,9 @@ def train_bpe(
             raise FileNotFoundError(checkpoint)
         # Only resume from checkpoints produced locally and trusted by the operator.
         state = torch.load(checkpoint, map_location=target, weights_only=True)
-        if state.get("format") != "corvus-bpe-checkpoint-v2":
+        checkpoint_format = ("corvus-modern-bpe-checkpoint-v1" if architecture == "modern"
+                             else "corvus-bpe-checkpoint-v2")
+        if state.get("format") != checkpoint_format:
             raise ValueError("Resume requires a V0.6 BPE checkpoint")
         expected = {
             "config": vars(config),
@@ -157,7 +174,8 @@ def train_bpe(
         scheduler.step()
         losses.append(accumulated)
         state = {
-            "format": "corvus-bpe-checkpoint-v2",
+            "format": ("corvus-modern-bpe-checkpoint-v1" if architecture == "modern"
+                       else "corvus-bpe-checkpoint-v2"),
             "config": vars(config),
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
@@ -200,13 +218,20 @@ def main() -> None:
     parser.add_argument("--gradient-accumulation", type=int, default=1)
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--decay-steps", type=int, default=0)
+    parser.add_argument("--architecture", choices=["legacy", "modern"], default="legacy")
+    parser.add_argument("--width", type=int, default=128)
+    parser.add_argument("--heads", type=int, default=4)
+    parser.add_argument("--layers", type=int, default=2)
+    parser.add_argument("--kv-heads", type=int, default=2)
     args = parser.parse_args()
     train_bpe(args.corpus, args.tokenizer, args.output, steps=args.steps,
               context_length=args.context_length, batch_size=args.batch_size,
               seed=args.seed, device=args.device, resume=args.resume,
               mixed_precision=args.mixed_precision,
               gradient_accumulation=args.gradient_accumulation,
-              warmup_steps=args.warmup_steps, decay_steps=args.decay_steps)
+              warmup_steps=args.warmup_steps, decay_steps=args.decay_steps,
+              architecture=args.architecture, width=args.width, heads=args.heads,
+              layers=args.layers, kv_heads=args.kv_heads)
 
 
 if __name__ == "__main__":
