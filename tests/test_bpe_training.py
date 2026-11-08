@@ -73,3 +73,30 @@ def test_resume_rejects_changed_file(tmp_path: Path):
     with pytest.raises(ValueError, match="mismatch"):
         train_bpe(corpus, tokenizer_path, tmp_path / "run",
                   steps=2, context_length=8, batch_size=1, resume=True)
+
+
+def test_cosine_schedule_resume_is_deterministic(tmp_path: Path):
+    corpus = tmp_path / "corpus.py"
+    corpus.write_bytes(b"def foo():\n    return 42\n" * 16)
+    tokenizer_path = tmp_path / "tokenizer.json"
+    ByteBPE.train([corpus.read_bytes()], merges=8).save(tokenizer_path)
+    kwargs = {"context_length": 8, "batch_size": 1,
+              "seed": 123, "warmup_steps": 2, "decay_steps": 4}
+    train_bpe(corpus, tokenizer_path, tmp_path / "full", steps=4, **kwargs)
+    train_bpe(corpus, tokenizer_path, tmp_path / "resumed", steps=2, **kwargs)
+    train_bpe(corpus, tokenizer_path, tmp_path / "resumed", steps=4, resume=True, **kwargs)
+    full = torch.load(tmp_path / "full" / "latest.pt", weights_only=True)
+    resumed = torch.load(tmp_path / "resumed" / "latest.pt", weights_only=True)
+    assert full["step"] == resumed["step"] == 4
+    assert full["optimizer"]["param_groups"][0]["lr"] == pytest.approx(3e-5)
+    for name in full["model"]:
+        assert torch.equal(full["model"][name], resumed["model"][name])
+    with pytest.raises(ValueError, match="mismatch"):
+        train_bpe(corpus, tokenizer_path, tmp_path / "resumed",
+                  steps=5, resume=True, **{**kwargs, "decay_steps": 5})
+
+
+def test_invalid_schedule(tmp_path: Path):
+    with pytest.raises(ValueError, match="schedule"):
+        train_bpe(tmp_path / "missing", tmp_path / "tokenizer.json",
+                  tmp_path / "output", warmup_steps=5, decay_steps=3)
