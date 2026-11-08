@@ -89,11 +89,10 @@ class BrainSession:
                     1, generator=generator,
                 ))
                 sequence.append(next_token)
-                if self.modern and cache is not None:
-                    # Cache covers all tokens except the newly sampled one.
-                    # Next iteration can append only while there is space.
-                    if cache[0][0].shape[2] >= self.config.context_length:
-                        cache = None
+                # Rebuild when the cached context window is full.
+                if (self.modern and cache is not None
+                        and cache[0][0].shape[2] >= self.config.context_length):
+                    cache = None
         data = (self.tokenizer.decode_bytes(sequence) if self.tokenizer
                 else bytes(sequence))
         return data.decode("utf-8", errors="replace")
