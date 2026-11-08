@@ -169,6 +169,8 @@ def train_bpe(
             "batch_size": batch_size,
             "gradient_accumulation": gradient_accumulation,
             "mixed_precision": use_amp,
+            "warmup_steps": warmup_steps,
+            "decay_steps": decay_steps,
             "cpu_rng": torch.get_rng_state(),
             "cuda_rng": torch.cuda.get_rng_state(target) if target.type == "cuda" else None,
         }
