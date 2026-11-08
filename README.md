@@ -58,6 +58,18 @@ To generate text from a local checkpoint:
 
 GPU users can choose `--device cuda` after installing and verifying CUDA-enabled PyTorch. Generated text is untrusted: review it and never execute it without appropriate isolation.
 
+## Interactive local CorvusBrain (V1.0)
+
+Once you have trained a trusted local BPE checkpoint, start the persistent
+inference shell:
+
+```powershell
+.\.venv\Scripts\python.exe -m corvusai.inference.brain --checkpoint checkpoints/bpe/latest.pt --tokenizer checkpoints/tokenizer.json --device cpu
+```
+
+See [V1.0 quickstart](docs/v1.0.md) for CUDA, one-shot mode, and limitations.
+This is a research interface, not a pretrained or production-ready assistant.
+
 ## Documentation
 
 The README is deliberately **version-neutral**. Detailed features, experiments, and evolving commands belong in the documentation:
