@@ -117,7 +117,8 @@ def train_bpe(
             "warmup_steps": warmup_steps,
             "decay_steps": decay_steps,
         }
-        if all(not state.get(key, 0) for key in ("warmup_steps", "decay_steps")):
+        if ("warmup_steps" not in state and "decay_steps" not in state
+                and warmup_steps == 0 and decay_steps == 0):
             expected = {key: value for key, value in expected.items()
                         if key not in ("warmup_steps", "decay_steps")}
         if any(state.get(key) != value for key, value in expected.items()):
