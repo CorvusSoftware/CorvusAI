@@ -14,3 +14,24 @@ checkpoints/*
 *.pth
 *.safetensors
 .env
+
+# Local tooling and generated test artifacts
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.pyright/
+.tox/
+.nox/
+.ipynb_checkpoints/
+*.log
+
+# Private local configuration (keep documented examples tracked)
+.env.*
+!.env.example
+!.env.sample
+
+# Local datasets and model exports
+*.ckpt
+*.onnx
+*.gguf
