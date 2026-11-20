@@ -62,3 +62,17 @@ The `legacy` architecture remains the default for compatibility. Checkpoints are
 Each training step now logs `step_seconds`, `train_tokens_per_second`, and `model_parameters`. Token throughput counts `batch_size * context_length * gradient_accumulation` training tokens per optimizer step; timing excludes checkpoint serialization, and synchronizes CUDA before reading elapsed time. Compare only runs with comparable hardware, batch settings and context lengths. These metrics do not establish model quality or optimized GPU kernel selection.
 
 Verify with `ruff check .` and `python -m pytest -q` before treating changes as validated. GPU throughput and peak memory must be measured on the target GPU, not inferred from CPU tests.
+
+
+## Persistent training metrics
+
+Each BPE training run writes one JSON object per completed optimizer step to
+`<output>/metrics.jsonl`, alongside `latest.pt`. The file contains the same
+metrics emitted to standard output, including loss, learning rate, elapsed
+training-step time, tokens per second and parameter count. Fresh runs reset
+the metrics file. On `--resume`, existing records after the checkpoint's
+committed step are discarded before new records are appended, so an
+interrupted run cannot retain measurements for steps that were not restored.
+
+This is experimental telemetry, not a benchmark result. Measure GPU
+performance on the intended hardware and confirm the CI before relying on it.
