@@ -119,6 +119,7 @@ def train_bpe(
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     output.mkdir(parents=True, exist_ok=True)
     checkpoint = output / "latest.pt"
+    metrics_path = output / "metrics.jsonl"
     completed = 0
     if resume:
         if not checkpoint.is_file():
@@ -159,6 +160,22 @@ def train_bpe(
         torch.set_rng_state(state["cpu_rng"].cpu())
         if target.type == "cuda" and state.get("cuda_rng") is not None:
             torch.cuda.set_rng_state(state["cuda_rng"].cpu(), device=target)
+    # Fresh runs reset metrics; resume drops entries beyond the committed checkpoint.
+    if resume and metrics_path.is_file():
+        retained = []
+        for line in metrics_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            if not isinstance(entry.get("step"), int):
+                raise ValueError("Invalid training metrics step")
+            if entry["step"] <= completed:
+                retained.append(line)
+        metrics_path.write_text(
+            "".join(line + "\n" for line in retained), encoding="utf-8",
+        )
+    elif not resume:
+        metrics_path.write_text("", encoding="utf-8")
     losses: list[float] = []
     model.train()
     for step in range(completed, steps):
@@ -212,7 +229,10 @@ def train_bpe(
                    "model_parameters": model_parameters}
         if target.type == "cuda":
             metrics["peak_vram_mib"] = round(torch.cuda.max_memory_allocated(target) / 2**20, 1)
-        print(json.dumps(metrics), flush=True)
+        metrics_line = json.dumps(metrics)
+        with metrics_path.open("a", encoding="utf-8") as stream:
+            stream.write(metrics_line + "\n")
+        print(metrics_line, flush=True)
     return losses
 
 
