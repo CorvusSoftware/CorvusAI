@@ -8,6 +8,7 @@ import json
 import math
 import os
 import random
+import time
 from pathlib import Path
 
 import torch
@@ -157,6 +158,7 @@ def train_bpe(
     losses: list[float] = []
     model.train()
     for step in range(completed, steps):
+        step_started = time.perf_counter()
         optimizer.zero_grad(set_to_none=True)
         accumulated = 0.0
         for _ in range(gradient_accumulation):
@@ -195,8 +197,15 @@ def train_bpe(
         temporary = output / "latest.tmp"
         torch.save(state, temporary)
         os.replace(temporary, checkpoint)
+        if target.type == "cuda":
+            torch.cuda.synchronize(target)
+        step_seconds = time.perf_counter() - step_started
+        trained_tokens = batch_size * context_length * gradient_accumulation
         metrics = {"step": step + 1, "train_loss": accumulated, "device": str(target),
-                   "learning_rate": optimizer.param_groups[0]["lr"]}
+                   "learning_rate": optimizer.param_groups[0]["lr"],
+                   "step_seconds": step_seconds,
+                   "train_tokens_per_second": trained_tokens / step_seconds,
+                   "model_parameters": sum(p.numel() for p in model.parameters())}
         if target.type == "cuda":
             metrics["peak_vram_mib"] = round(torch.cuda.max_memory_allocated(target) / 2**20, 1)
         print(json.dumps(metrics), flush=True)
