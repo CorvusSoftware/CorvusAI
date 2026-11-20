@@ -98,6 +98,8 @@ def train_bpe(
     validation_documents = None
     validation_sha256 = None
     if validation_corpus is not None:
+        if corpus.resolve() == validation_corpus.resolve():
+            raise ValueError("Validation corpus must differ from training corpus")
         validation_documents, validation_sha256 = _load_documents(
             validation_corpus, tokenizer, context_length,
         )
@@ -154,6 +156,10 @@ def train_bpe(
         }
         if validation_documents is not None:
             expected["validation_sha256"] = validation_sha256
+            if "eval_every" in state:
+                expected["eval_every"] = eval_every or 1
+            elif (eval_every or 1) != 1:
+                raise ValueError("Resume validation cadence mismatch")
         elif state.get("validation_sha256") is not None:
             raise ValueError("Resume validation corpus mismatch")
         if ("warmup_steps" not in state and "decay_steps" not in state
@@ -232,6 +238,7 @@ def train_bpe(
             "warmup_steps": warmup_steps,
             "decay_steps": decay_steps,
             "validation_sha256": validation_sha256,
+            "eval_every": (eval_every or 1) if validation_documents is not None else None,
             "cpu_rng": torch.get_rng_state(),
             "cuda_rng": torch.cuda.get_rng_state(target) if target.type == "cuda" else None,
         }
