@@ -73,3 +73,22 @@ def test_modern_rejects_excessive_context():
     ))
     with pytest.raises(ValueError, match="context length"):
         model(torch.randint(0, 32, (1, 5)))
+
+
+def test_modern_rejects_invalid_cache_shapes():
+    model = ModernCorvusTransformer(ModernConfig(
+        vocab_size=32, context_length=8, width=16, heads=4, kv_heads=2, layers=2,
+    ))
+    tokens = torch.randint(0, 32, (1, 2))
+    with torch.inference_mode():
+        _, cache = model(tokens, use_cache=True)
+    with pytest.raises(ValueError, match="Cache layer count"):
+        model(tokens[:, :1], cache=cache[:1])
+    bad_cache = list(cache)
+    bad_cache[1] = (cache[1][0][:, :, :1, :], cache[1][1])
+    with pytest.raises(ValueError, match="Invalid cache shape"):
+        model(tokens[:, :1], cache=bad_cache)
+    bad_cache = list(cache)
+    bad_cache[0] = (cache[0][0].repeat(2, 1, 1, 1), cache[0][1])
+    with pytest.raises(ValueError, match="Invalid cache shape"):
+        model(tokens[:, :1], cache=bad_cache)
