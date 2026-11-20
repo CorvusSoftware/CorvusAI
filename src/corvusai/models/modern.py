@@ -22,7 +22,7 @@ class ModernConfig:
                self.layers, self.kv_heads) <= 0:
             raise ValueError("Model dimensions must be positive")
         if self.width % self.heads or self.heads % self.kv_heads:
-            raise ValueError("width must divide heads and heads must divide kv_heads")
+            raise ValueError("width must be divisible by heads and heads by kv_heads")
         if (self.width // self.heads) % 2:
             raise ValueError("RoPE requires an even head dimension")
         if self.rope_base <= 0:
@@ -124,8 +124,17 @@ class ModernCorvusTransformer(nn.Module):
     ) -> torch.Tensor | tuple[torch.Tensor, list[tuple[torch.Tensor, torch.Tensor]]]:
         if tokens.ndim != 2 or tokens.shape[1] < 1:
             raise ValueError("Expected nonempty [batch, sequence] tokens")
-        if cache is not None and len(cache) != len(self.blocks):
-            raise ValueError("Cache layer count mismatch")
+        if cache is not None:
+            if len(cache) != len(self.blocks):
+                raise ValueError("Cache layer count mismatch")
+            past_length = cache[0][0].shape[2]
+            for index, (keys, values) in enumerate(cache):
+                expected = (tokens.shape[0], self.config.kv_heads,
+                            past_length, self.config.width // self.config.heads)
+                if keys.shape != expected or values.shape != expected:
+                    raise ValueError(f"Invalid cache shape at layer {index}")
+                if keys.device != tokens.device or values.device != tokens.device:
+                    raise ValueError(f"Cache device mismatch at layer {index}")
         past = cache[0][0].shape[2] if cache is not None else 0
         if past + tokens.shape[1] > self.config.context_length:
             raise ValueError("Sequence exceeds context length")
