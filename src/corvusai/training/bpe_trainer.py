@@ -18,7 +18,9 @@ from corvusai.models.transformer import CorvusTransformer, ModelConfig
 from corvusai.tokenization.bpe import ByteBPE
 
 
-def _load_documents(corpus: Path, tokenizer: ByteBPE, context_length: int) -> tuple[list[torch.Tensor], str]:
+def _load_documents(
+    corpus: Path, tokenizer: ByteBPE, context_length: int,
+) -> tuple[list[torch.Tensor], str]:
     paths = sorted(corpus.rglob("*.py")) if corpus.is_dir() else [corpus]
     if not paths or any(not path.is_file() for path in paths):
         raise ValueError("Corpus must be a file or a directory containing Python files")
@@ -103,6 +105,8 @@ def train_bpe(
                              context_length=context_length)
         model = CorvusTransformer(config).to(target)
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+    model_parameters = sum(parameter.numel() for parameter in model.parameters())
+
     def lr_multiplier(step: int) -> float:
         if warmup_steps and step < warmup_steps:
             return (step + 1) / warmup_steps
@@ -205,7 +209,7 @@ def train_bpe(
                    "learning_rate": optimizer.param_groups[0]["lr"],
                    "step_seconds": step_seconds,
                    "train_tokens_per_second": trained_tokens / step_seconds,
-                   "model_parameters": sum(p.numel() for p in model.parameters())}
+                   "model_parameters": model_parameters}
         if target.type == "cuda":
             metrics["peak_vram_mib"] = round(torch.cuda.max_memory_allocated(target) / 2**20, 1)
         print(json.dumps(metrics), flush=True)
