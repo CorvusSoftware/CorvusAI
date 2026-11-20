@@ -107,3 +107,27 @@ missing settings that prevent a fair speed comparison. It also warns
 that the hardware model and software environment are not verified.
 Older `metrics.jsonl` files remain readable, but their missing
 metadata is explicitly reported rather than silently assumed equal.
+
+
+## Held-out evaluation for BPE training
+
+Use a separate, independently held-out Python corpus to measure next-token
+validation loss and perplexity without updating model weights:
+
+```bash
+python -m corvusai.training.bpe_trainer --corpus data/train.py --validation-corpus data/heldout.py --tokenizer checkpoints/tokenizer.json --architecture modern --output checkpoints/modern --context-length 64 --steps 20 --eval-every 5
+```
+
+`--eval-every 5` records `validation_loss`, `validation_perplexity`,
+`validation_tokens` and `validation_sha256` on every fifth optimizer step.
+When a validation corpus is provided without `--eval-every`, evaluation runs
+after every step. Validation is performed in evaluation/inference mode and
+does not update model weights. Checkpoint resume requires the same validation
+corpus fingerprint; existing runs without validation remain supported.
+
+The validation corpus must be distinct from training data. The fingerprint
+check catches identical input paths/content under the same corpus name, but
+does not detect near-duplicates or leakage across files. Validation
+perplexity is tokenizer-dependent, and does not by itself establish code
+generation quality. The validation pass adds computation after each
+checkpoint; `step_seconds` excludes that evaluation.
