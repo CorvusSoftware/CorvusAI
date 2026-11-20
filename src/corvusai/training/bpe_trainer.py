@@ -77,11 +77,15 @@ def train_bpe(
     heads: int = 4,
     layers: int = 2,
     kv_heads: int = 2,
+    validation_corpus: Path | None = None,
+    eval_every: int = 0,
 ) -> list[float]:
     if architecture not in ("legacy", "modern"):
         raise ValueError("Unknown architecture")
     if steps < 1 or context_length < 2 or batch_size < 1 or gradient_accumulation < 1:
         raise ValueError("Invalid training dimensions or gradient accumulation")
+    if eval_every < 0 or (validation_corpus is None and eval_every):
+        raise ValueError("Validation corpus required when eval_every is set")
     if warmup_steps < 0 or decay_steps < warmup_steps:
         raise ValueError("Invalid learning rate schedule")
     target = torch.device(device)
@@ -91,6 +95,14 @@ def train_bpe(
     tokenizer = ByteBPE.load(tokenizer_path)
     documents, corpus_sha256 = _load_documents(corpus, tokenizer, context_length)
     tokenizer_sha256 = hashlib.sha256(tokenizer_bytes).hexdigest()
+    validation_documents = None
+    validation_sha256 = None
+    if validation_corpus is not None:
+        validation_documents, validation_sha256 = _load_documents(
+            validation_corpus, tokenizer, context_length,
+        )
+        if validation_sha256 == corpus_sha256:
+            raise ValueError("Validation corpus must differ from training corpus")
     random.seed(seed)
     torch.manual_seed(seed)
     if target.type == "cuda":
@@ -140,6 +152,10 @@ def train_bpe(
             "warmup_steps": warmup_steps,
             "decay_steps": decay_steps,
         }
+        if validation_documents is not None:
+            expected["validation_sha256"] = validation_sha256
+        elif state.get("validation_sha256") is not None:
+            raise ValueError("Resume validation corpus mismatch")
         if ("warmup_steps" not in state and "decay_steps" not in state
                 and warmup_steps == 0 and decay_steps == 0):
             expected = {key: value for key, value in expected.items()
@@ -215,6 +231,7 @@ def train_bpe(
             "mixed_precision": use_amp,
             "warmup_steps": warmup_steps,
             "decay_steps": decay_steps,
+            "validation_sha256": validation_sha256,
             "cpu_rng": torch.get_rng_state(),
             "cuda_rng": torch.cuda.get_rng_state(target) if target.type == "cuda" else None,
         }
@@ -234,6 +251,25 @@ def train_bpe(
                    "mixed_precision": use_amp,
                    "corpus_sha256": corpus_sha256,
                    "tokenizer_sha256": tokenizer_sha256}
+        if validation_documents is not None and (step + 1) % (eval_every or 1) == 0:
+            model.eval()
+            total_loss = 0.0
+            total_tokens = 0
+            with torch.inference_mode():
+                for document in validation_documents:
+                    for start in range(0, len(document) - 1, context_length):
+                        window = document[start:start + context_length + 1]
+                        if len(window) < 2:
+                            continue
+                        batch = window.unsqueeze(0).to(target)
+                        count = len(window) - 1
+                        total_loss += float(model.loss(batch)) * count
+                        total_tokens += count
+            model.train()
+            metrics["validation_loss"] = total_loss / total_tokens
+            metrics["validation_perplexity"] = math.exp(metrics["validation_loss"])
+            metrics["validation_tokens"] = total_tokens
+            metrics["validation_sha256"] = validation_sha256
         if target.type == "cuda":
             metrics["peak_vram_mib"] = round(torch.cuda.max_memory_allocated(target) / 2**20, 1)
         metrics_line = json.dumps(metrics)
@@ -263,6 +299,8 @@ def main() -> None:
     parser.add_argument("--heads", type=int, default=4)
     parser.add_argument("--layers", type=int, default=2)
     parser.add_argument("--kv-heads", type=int, default=2)
+    parser.add_argument("--validation-corpus", type=Path)
+    parser.add_argument("--eval-every", type=int, default=0)
     args = parser.parse_args()
     train_bpe(args.corpus, args.tokenizer, args.output, steps=args.steps,
               context_length=args.context_length, batch_size=args.batch_size,
@@ -271,7 +309,8 @@ def main() -> None:
               gradient_accumulation=args.gradient_accumulation,
               warmup_steps=args.warmup_steps, decay_steps=args.decay_steps,
               architecture=args.architecture, width=args.width, heads=args.heads,
-              layers=args.layers, kv_heads=args.kv_heads)
+              layers=args.layers, kv_heads=args.kv_heads,
+              validation_corpus=args.validation_corpus, eval_every=args.eval_every)
 
 
 if __name__ == "__main__":
