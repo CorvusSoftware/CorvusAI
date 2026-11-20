@@ -175,6 +175,9 @@ def train_bpe(
         scaler.update()
         scheduler.step()
         losses.append(accumulated)
+        if target.type == "cuda":
+            torch.cuda.synchronize(target)
+        step_seconds = time.perf_counter() - step_started
         state = {
             "format": ("corvus-modern-bpe-checkpoint-v1" if architecture == "modern"
                        else "corvus-bpe-checkpoint-v2"),
@@ -197,9 +200,6 @@ def train_bpe(
         temporary = output / "latest.tmp"
         torch.save(state, temporary)
         os.replace(temporary, checkpoint)
-        if target.type == "cuda":
-            torch.cuda.synchronize(target)
-        step_seconds = time.perf_counter() - step_started
         trained_tokens = batch_size * context_length * gradient_accumulation
         metrics = {"step": step + 1, "train_loss": accumulated, "device": str(target),
                    "learning_rate": optimizer.param_groups[0]["lr"],
