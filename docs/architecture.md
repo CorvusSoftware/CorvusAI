@@ -19,3 +19,10 @@ A small, CPU/GPU-compatible causal Transformer, reversible byte tokenizer and au
 5. Sandboxed agent with explicit approval for destructive actions.
 
 Model checkpoints and raw datasets are excluded from Git. Never execute generated code outside a sandbox.
+
+
+## Modern KV-cache validation
+
+The modern Transformer validates the number of cache layers, the key/value tensor shapes and their device before applying attention. A valid cache layer has shape `[batch, kv_heads, cached_tokens, head_dim]`, where `head_dim = width / heads`. All layers must share the same cached-token length. Malformed caches raise `ValueError` rather than being passed to PyTorch attention operations. CPU regression tests cover valid cached-versus-full logits and malformed cache shapes.
+
+This hardening does not increase the model's context window or guarantee a particular GPU attention kernel. The legacy checkpoint format and the opt-in `--architecture modern` selection remain unchanged.
