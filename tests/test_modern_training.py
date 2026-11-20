@@ -1,5 +1,6 @@
 """Small CPU regression tests for the modern CorvusBrain training path."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,7 @@ def test_modern_cached_logits_match_full_forward():
     assert cache[0][0].shape[2] == tokens.shape[1]
 
 
-def test_modern_train_resume_and_generate(tmp_path: Path):
+def test_modern_train_resume_and_generate(tmp_path: Path, capsys):
     corpus = tmp_path / "corpus.py"
     corpus.write_bytes(b"def add(a, b):\n    return a + b\n" * 8)
     tokenizer_path = tmp_path / "tokenizer.json"
@@ -36,6 +37,10 @@ def test_modern_train_resume_and_generate(tmp_path: Path):
     output = tmp_path / "run"
     losses = train_bpe(corpus, tokenizer_path, output, steps=1, **options)
     assert len(losses) == 1
+    metrics = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert metrics["step_seconds"] > 0
+    assert metrics["train_tokens_per_second"] > 0
+    assert metrics["model_parameters"] > 0
     state = torch.load(output / "latest.pt", weights_only=True)
     assert state["format"] == "corvus-modern-bpe-checkpoint-v1"
     assert state["step"] == 1
