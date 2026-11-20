@@ -57,7 +57,30 @@ def summarize(path: Path, *, warmup: int = 0) -> dict[str, object]:
         result["max_peak_vram_mib"] = max(row["peak_vram_mib"] for row in measured)
     if all("model_parameters" in row for row in measured):
         result["model_parameters"] = measured[-1]["model_parameters"]
+    for key in ("device", "architecture", "context_length", "batch_size",
+                "gradient_accumulation", "mixed_precision", "corpus_sha256",
+                "tokenizer_sha256"):
+        values = [record.get(key) for record in records]
+        if all(value is not None and value == values[0] for value in values):
+            result[key] = values[0]
     return result
+
+
+def compatibility_warnings(summaries: list[dict[str, object]]) -> list[str]:
+    """Report known confounders; unknown metadata cannot establish comparability."""
+    if len(summaries) < 2:
+        return []
+    warnings = []
+    for key in ("device", "context_length", "batch_size",
+                "gradient_accumulation", "mixed_precision", "corpus_sha256",
+                "tokenizer_sha256"):
+        values = [summary.get(key) for summary in summaries]
+        if any(value is None for value in values):
+            warnings.append(f"Cannot verify comparable {key}: missing metadata")
+        elif len(set(values)) != 1:
+            warnings.append(f"Runs differ in {key}")
+    warnings.append("Hardware model and software environment are not verified")
+    return warnings
 
 
 def main() -> None:
@@ -66,7 +89,9 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=0,
                         help="Skip this many initial recorded steps in each run")
     args = parser.parse_args()
-    print(json.dumps([summarize(run, warmup=args.warmup) for run in args.runs], indent=2))
+    summaries = [summarize(run, warmup=args.warmup) for run in args.runs]
+    print(json.dumps({"runs": summaries, "warnings": compatibility_warnings(summaries)},
+                     indent=2))
 
 
 if __name__ == "__main__":
