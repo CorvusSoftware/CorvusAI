@@ -39,3 +39,13 @@ completions may contain sensitive or inappropriate content.
 **Reproducibility:** fixed task order, per-task seeds and file SHA-256
 fingerprints. CPU/GPU numerical differences and changes in PyTorch versions
 can still affect sampling.
+
+## Multi-sample proxy evaluation
+
+Add `--samples-per-task 5` to generate five completions per task. Seeds are assigned deterministically as `seed + task_index * samples_per_task + sample_index`. The JSON report retains the first-sample metrics for compatibility and adds:
+
+- `syntax_valid_at_k`: fraction of tasks with at least one syntactically valid sample.
+- `exact_match_at_k`: fraction of reference tasks with at least one exactly matching sample.
+- `results[].samples`: all sampled completions and their proxy outcomes.
+
+These are **best-of-k proxy metrics**, not functional `pass@k` and not the unbiased HumanEval pass@k estimator. Samples are capped at 100 per task to limit accidental runaway work. No generated Python is executed.
