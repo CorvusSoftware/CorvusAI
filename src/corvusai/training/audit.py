@@ -13,7 +13,7 @@ def audit(manifest_path: Path) -> dict[str, object]:
     train = manifest["train"]
     validation = manifest["validation"]
     if not isinstance(train, list) or not isinstance(validation, list):
-        raise ValueError("train and validation must be lists")
+        raise TypeError("train and validation must be lists")
 
     def field(records: list[dict], key: str) -> set[str]:
         return {str(record[key]) for record in records}
