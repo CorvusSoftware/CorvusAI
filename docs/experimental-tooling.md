@@ -50,3 +50,9 @@ The commands above must be run in a configured development environment. Adding t
 - Audited dataset provenance, repository-level splitting, stronger deduplication and licensing checks.
 - Measured training throughput, memory and optimization on target hardware.
 - Agent planning, permissioned patches, sandboxed tests, rollback and a usable CorvusCode workflow.
+
+## Incremental hardening
+
+The dataset audit now also verifies that source file contents still match their recorded SHA-256 digests and rejects unsafe paths and symlinks. The profiling report includes output UTF-8 byte count. CorvusAgent exposes a Python API, `preview_patch(root, relative_path, proposed_text)`, returning a unified diff without writing files. This is **not** an approval, patch application, or execution sandbox.
+
+Regression tests cover these behaviors, but execution results must be checked in CI or locally before treating them as validated.
