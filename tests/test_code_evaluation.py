@@ -69,3 +69,41 @@ def test_rejects_non_prefix_generation(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(code, "generate", lambda *_args, **_kwargs: "wrong")
     with pytest.raises(ValueError, match="prompt"):
         code.evaluate_code(benchmark, checkpoint, tmp_path / "out.json")
+
+
+def test_multiple_samples_best_of_k_proxy(tmp_path: Path, monkeypatch):
+    benchmark = _benchmark(tmp_path, [
+        {"id": "a", "prompt": "x = ", "reference": "1"},
+        {"id": "b", "prompt": "y = ", "reference": "2"},
+    ])
+    checkpoint = tmp_path / "checkpoint.pt"
+    checkpoint.write_bytes(b"dummy")
+    seen = []
+
+    def fake_generate(_checkpoint, prompt, **kwargs):
+        seen.append(kwargs["seed"])
+        completions = {
+            ("x = ", 10): "?",
+            ("x = ", 11): "1",
+            ("y = ", 12): "3",
+            ("y = ", 13): "4",
+        }
+        return prompt + completions[(prompt, kwargs["seed"])]
+
+    monkeypatch.setattr(code, "generate", fake_generate)
+    report = code.evaluate_code(
+        benchmark, checkpoint, tmp_path / "report.json",
+        samples_per_task=2, seed=10,
+    )
+    assert seen == [10, 11, 12, 13]
+    assert report["parameters"]["samples_per_task"] == 2
+    assert report["syntax_valid_at_k"] == 1
+    assert report["exact_match_at_k"] == 0.5
+    assert report["exact_match_rate"] == 0
+    assert len(report["results"][0]["samples"]) == 2
+
+
+def test_rejects_invalid_sample_count(tmp_path: Path):
+    with pytest.raises(ValueError, match="generation parameters"):
+        code.evaluate_code(tmp_path / "none", tmp_path / "none",
+                           tmp_path / "out", samples_per_task=0)
