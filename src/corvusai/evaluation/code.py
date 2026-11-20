@@ -41,8 +41,6 @@ def evaluate_code(
         raise ValueError("Invalid generation parameters")
     if samples_per_task > 100:
         raise ValueError("samples_per_task must be <= 100")
-    if max_new_tokens < 0 or temperature <= 0:
-        raise ValueError("Invalid generation parameters")
     tasks = []
     seen: set[str] = set()
     for line_number, line in enumerate(benchmark.read_text(encoding="utf-8").splitlines(), 1):
@@ -137,7 +135,8 @@ def main() -> None:
         samples_per_task=args.samples_per_task,
     )
     print(json.dumps({key: report[key] for key in
-                      ("tasks", "syntax_valid_rate", "exact_match_rate", "reference_tasks")}))
+                      ("tasks", "syntax_valid_rate", "exact_match_rate", "reference_tasks",
+                       "syntax_valid_at_k", "exact_match_at_k")}))
 
 
 if __name__ == "__main__":
