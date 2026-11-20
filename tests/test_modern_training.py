@@ -96,3 +96,30 @@ def test_modern_rejects_invalid_cache_shapes():
     bad_cache[0] = (cache[0][0].repeat(2, 1, 1, 1), cache[0][1])
     with pytest.raises(ValueError, match="Invalid cache shape"):
         model(tokens[:, :1], cache=bad_cache)
+
+
+def test_modern_heldout_validation_and_resume(tmp_path: Path):
+    corpus = tmp_path / "train.py"
+    validation = tmp_path / "validation.py"
+    corpus.write_bytes(b"def square(x):\n    return x * x\n" * 6)
+    validation.write_bytes(b"def cube(y):\n    return y * y * y\n" * 6)
+    tokenizer_path = tmp_path / "tokenizer.json"
+    ByteBPE.train([corpus.read_bytes()], merges=8).save(tokenizer_path)
+    output = tmp_path / "validation-run"
+    options = dict(context_length=8, batch_size=1, architecture="modern",
+                   width=16, heads=4, kv_heads=2, layers=1,
+                   validation_corpus=validation, eval_every=2)
+    train_bpe(corpus, tokenizer_path, output, steps=2, **options)
+    records = [json.loads(line) for line in
+               (output / "metrics.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert "validation_loss" not in records[0]
+    assert records[1]["validation_loss"] > 0
+    assert records[1]["validation_perplexity"] > 1
+    assert records[1]["validation_tokens"] > 0
+    train_bpe(corpus, tokenizer_path, output, steps=3, resume=True, **options)
+    with pytest.raises(ValueError, match="mismatch"):
+        train_bpe(corpus, tokenizer_path, output, steps=4, resume=True,
+                  **{**options, "validation_corpus": None, "eval_every": 0})
+    with pytest.raises(ValueError, match="differ"):
+        train_bpe(corpus, tokenizer_path, tmp_path / "invalid", steps=1,
+                  **{**options, "validation_corpus": corpus})
