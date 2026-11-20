@@ -226,7 +226,14 @@ def train_bpe(
                    "learning_rate": optimizer.param_groups[0]["lr"],
                    "step_seconds": step_seconds,
                    "train_tokens_per_second": trained_tokens / step_seconds,
-                   "model_parameters": model_parameters}
+                   "model_parameters": model_parameters,
+                   "architecture": architecture,
+                   "context_length": context_length,
+                   "batch_size": batch_size,
+                   "gradient_accumulation": gradient_accumulation,
+                   "mixed_precision": use_amp,
+                   "corpus_sha256": corpus_sha256,
+                   "tokenizer_sha256": tokenizer_sha256}
         if target.type == "cuda":
             metrics["peak_vram_mib"] = round(torch.cuda.max_memory_allocated(target) / 2**20, 1)
         metrics_line = json.dumps(metrics)
