@@ -35,3 +35,30 @@ def test_manifest_audit(tmp_path):
     manifest.write_text(json.dumps({"root": str(tmp_path), "train": [records[0]],
                                     "validation": [records[0]]}), encoding="utf-8")
     assert not audit(manifest)["passed"]
+
+
+def test_manifest_audit_detects_modified_and_missing_sources(tmp_path):
+    (tmp_path / "source.py").write_text("original", encoding="utf-8")
+    digest = hashlib.sha256(b"original").hexdigest()
+    manifest = tmp_path / "manifest.json"
+    record = {"path": "source.py", "sha256": digest}
+    manifest.write_text(json.dumps({"root": str(tmp_path), "train": [record],
+                                    "validation": []}), encoding="utf-8")
+    assert audit(manifest)["passed"]
+    (tmp_path / "source.py").write_text("changed", encoding="utf-8")
+    assert audit(manifest)["changed_files"] == ["source.py"]
+    (tmp_path / "source.py").unlink()
+    assert audit(manifest)["missing_files"] == ["source.py"]
+
+
+def test_manifest_audit_rejects_traversal_and_symlink(tmp_path):
+    (tmp_path / "source.py").write_text("x", encoding="utf-8")
+    (tmp_path / "alias.py").symlink_to(tmp_path / "source.py")
+    manifest = tmp_path / "manifest.json"
+    records = [{"path": "../outside.py", "sha256": "invalid"},
+               {"path": "alias.py", "sha256": "invalid"}]
+    manifest.write_text(json.dumps({"root": str(tmp_path), "train": records,
+                                    "validation": []}), encoding="utf-8")
+    report = audit(manifest)
+    assert not report["passed"]
+    assert report["unsafe_paths"] == ["../outside.py", "alias.py"]
