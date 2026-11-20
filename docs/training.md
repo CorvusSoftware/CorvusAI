@@ -76,3 +76,23 @@ interrupted run cannot retain measurements for steps that were not restored.
 
 This is experimental telemetry, not a benchmark result. Measure GPU
 performance on the intended hardware and confirm the CI before relying on it.
+
+
+## Comparing training runs
+
+Use the comparison command on local BPE run folders, or pass explicit
+`metrics.jsonl` paths:
+
+```bash
+python -m corvusai.training.compare checkpoints/legacy checkpoints/modern --warmup 2
+```
+
+The command prints a JSON array containing per-run summary statistics.
+`--warmup 2` excludes the first two *recorded* steps from mean/median
+calculations, while retaining the final recorded loss and step count.
+Missing, malformed, nonfinite or nonpositive timing/throughput metrics
+are rejected. This tool does not run training, infer speedups or claim
+the runs are directly comparable. For meaningful throughput comparisons,
+keep the device, corpus, tokenizer, batch size, context length and
+measurement conditions consistent. Training loss alone is not a
+held-out quality metric.
