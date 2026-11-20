@@ -117,6 +117,11 @@ def test_modern_heldout_validation_and_resume(tmp_path: Path):
     assert records[1]["validation_perplexity"] > 1
     assert records[1]["validation_tokens"] > 0
     train_bpe(corpus, tokenizer_path, output, steps=3, resume=True, **options)
+    state = torch.load(output / "latest.pt", weights_only=True)
+    assert state["eval_every"] == 2
+    with pytest.raises(ValueError, match="mismatch"):
+        train_bpe(corpus, tokenizer_path, output, steps=4, resume=True,
+                  **{**options, "eval_every": 1})
     with pytest.raises(ValueError, match="mismatch"):
         train_bpe(corpus, tokenizer_path, output, steps=4, resume=True,
                   **{**options, "validation_corpus": None, "eval_every": 0})
