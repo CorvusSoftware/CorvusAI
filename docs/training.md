@@ -96,3 +96,14 @@ the runs are directly comparable. For meaningful throughput comparisons,
 keep the device, corpus, tokenizer, batch size, context length and
 measurement conditions consistent. Training loss alone is not a
 held-out quality metric.
+
+## Comparison compatibility checks
+
+New BPE telemetry records the architecture, context length, batch size,
+gradient accumulation, mixed precision and SHA-256 fingerprints of the
+corpus and tokenizer. The comparison CLI emits a JSON object with
+`runs` and `warnings`. For multiple runs it flags different or
+missing settings that prevent a fair speed comparison. It also warns
+that the hardware model and software environment are not verified.
+Older `metrics.jsonl` files remain readable, but their missing
+metadata is explicitly reported rather than silently assumed equal.
