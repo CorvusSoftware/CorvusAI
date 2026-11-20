@@ -22,7 +22,7 @@ def profile(checkpoint: Path, *, tokenizer: Path | None = None,
         torch.cuda.synchronize()
         torch.cuda.reset_peak_memory_stats()
     start = time.perf_counter()
-    session.complete(prompt, max_new_tokens=tokens)
+    generated = session.complete(prompt, max_new_tokens=tokens)
     if device == "cuda":
         import torch
         torch.cuda.synchronize()
@@ -31,6 +31,7 @@ def profile(checkpoint: Path, *, tokenizer: Path | None = None,
         "device": device, "requested_new_tokens": tokens,
         "load_seconds": load_seconds, "generation_seconds": seconds,
         "requested_tokens_per_second": tokens / seconds,
+        "output_utf8_bytes": len(generated.encode("utf-8")),
         "note": "Requested token throughput, not a quality benchmark.",
     }
     if device == "cuda":
