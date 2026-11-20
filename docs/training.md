@@ -131,3 +131,14 @@ does not detect near-duplicates or leakage across files. Validation
 perplexity is tokenizer-dependent, and does not by itself establish code
 generation quality. The validation pass adds computation after each
 checkpoint; `step_seconds` excludes that evaluation.
+
+## Validation cadence on resume
+
+For new checkpoints with a held-out corpus, the effective validation
+frequency (`eval_every`, where `0` means every step) is saved in
+`latest.pt`. Resume rejects a changed frequency, preventing gaps or
+unexpected changes in the validation history. Earlier checkpoints without
+this field can be resumed with the default every-step frequency only.
+A training corpus and validation corpus cannot resolve to the same path,
+and matching corpus fingerprints are also rejected. These checks do not
+guarantee the absence of near-duplicate data leakage.
