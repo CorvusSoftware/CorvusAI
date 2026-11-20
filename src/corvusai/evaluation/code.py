@@ -29,6 +29,7 @@ def evaluate_code(
     seed: int = 42,
     temperature: float = 0.8,
     device: str = "cpu",
+    samples_per_task: int = 1,
 ) -> dict:
     """Evaluate trusted local checkpoints without executing generated code.
 
@@ -36,6 +37,10 @@ def evaluate_code(
     "reference": "optional exact expected completion"}. Exact match is
     reported only for examples with references.
     """
+    if max_new_tokens < 0 or temperature <= 0 or samples_per_task < 1:
+        raise ValueError("Invalid generation parameters")
+    if samples_per_task > 100:
+        raise ValueError("samples_per_task must be <= 100")
     if max_new_tokens < 0 or temperature <= 0:
         raise ValueError("Invalid generation parameters")
     tasks = []
@@ -62,22 +67,33 @@ def evaluate_code(
 
     results = []
     for index, (identifier, prompt, reference) in enumerate(tasks):
-        full_text = generate(
-            checkpoint, prompt, max_new_tokens=max_new_tokens,
-            temperature=temperature, seed=seed + index, device=device,
-            tokenizer_path=tokenizer_path,
-        )
-        if not full_text.startswith(prompt):
-            raise ValueError("Generator output does not preserve the prompt")
-        completion = full_text[len(prompt):]
+        samples = []
+        for sample_index in range(samples_per_task):
+            full_text = generate(
+                checkpoint, prompt, max_new_tokens=max_new_tokens,
+                temperature=temperature, seed=seed + index * samples_per_task + sample_index,
+                device=device, tokenizer_path=tokenizer_path,
+            )
+            if not full_text.startswith(prompt):
+                raise ValueError("Generator output does not preserve the prompt")
+            completion = full_text[len(prompt):]
+            samples.append({
+                "syntax_valid": _syntax_valid(full_text),
+                "exact_match": completion == reference if reference is not None else None,
+                "completion": completion,
+            })
         results.append({
             "id": identifier,
-            "syntax_valid": _syntax_valid(full_text),
-            "exact_match": completion == reference if reference is not None else None,
-            "completion": completion,
+            **samples[0],
+            "samples": samples,
+            "any_syntax_valid": any(item["syntax_valid"] for item in samples),
+            "any_exact_match": (any(item["exact_match"] for item in samples)
+                                if reference is not None else None),
         })
     matched = [result["exact_match"] for result in results
                if result["exact_match"] is not None]
+    reference_results = [result for result in results
+                         if result["any_exact_match"] is not None]
     report = {
         "format": "corvus-code-evaluation-v1",
         "benchmark_sha256": hashlib.sha256(benchmark.read_bytes()).hexdigest(),
@@ -85,13 +101,17 @@ def evaluate_code(
         "tokenizer_sha256": (hashlib.sha256(tokenizer_path.read_bytes()).hexdigest()
                              if tokenizer_path is not None else None),
         "parameters": {"max_new_tokens": max_new_tokens, "temperature": temperature,
-                       "seed": seed, "device": device},
+                       "seed": seed, "device": device,
+                       "samples_per_task": samples_per_task},
         "tasks": len(results),
         "syntax_valid_rate": sum(result["syntax_valid"] for result in results) / len(results),
         "exact_match_rate": sum(matched) / len(matched) if matched else None,
         "reference_tasks": len(matched),
+        "syntax_valid_at_k": sum(r["any_syntax_valid"] for r in results) / len(results),
+        "exact_match_at_k": (sum(r["any_exact_match"] for r in reference_results)
+                             / len(reference_results) if reference_results else None),
         "results": results,
-        "notes": "Syntax validity and exact-match are proxy metrics, not functional correctness. Generated code is never executed.",
+        "notes": "syntax_valid_at_k and exact_match_at_k are best-of-k proxy metrics, NOT functional pass@k. Generated code is never executed.",
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -106,6 +126,7 @@ def main() -> None:
     parser.add_argument("--tokenizer", type=Path)
     parser.add_argument("--max-new-tokens", type=int, default=80)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--samples-per-task", type=int, default=1)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
     args = parser.parse_args()
@@ -113,6 +134,7 @@ def main() -> None:
         args.benchmark, args.checkpoint, args.output, tokenizer_path=args.tokenizer,
         max_new_tokens=args.max_new_tokens, seed=args.seed,
         temperature=args.temperature, device=args.device,
+        samples_per_task=args.samples_per_task,
     )
     print(json.dumps({key: report[key] for key in
                       ("tasks", "syntax_valid_rate", "exact_match_rate", "reference_tasks")}))
