@@ -47,3 +47,18 @@ tokenizers as if they were directly equivalent.
 `split_files(directory)` provides a deterministic, disjoint file-level split
 for dataset preparation. A full deduplication and licensing pipeline is still
 needed before training on large third-party corpora.
+
+
+## Modern architecture verification and throughput
+
+The BPE trainer supports an opt-in modern Transformer using RoPE, RMSNorm, grouped-query attention, SwiGLU and PyTorch scaled dot-product attention:
+
+```bash
+python -m corvusai.training.bpe_trainer --corpus data/sample.py --tokenizer checkpoints/tokenizer.json --output checkpoints/modern --architecture modern --context-length 64 --width 128 --heads 4 --kv-heads 2 --layers 2 --steps 20 --device cpu
+```
+
+The `legacy` architecture remains the default for compatibility. Checkpoints are architecture-specific; resume using the same configuration and tokenizer. The modern path has CPU regression tests covering cached attention versus full forward, checkpoint resume and local generation.
+
+Each training step now logs `step_seconds`, `train_tokens_per_second`, and `model_parameters`. Token throughput counts `batch_size * context_length * gradient_accumulation` training tokens per optimizer step; timing excludes checkpoint serialization, and synchronizes CUDA before reading elapsed time. Compare only runs with comparable hardware, batch settings and context lengths. These metrics do not establish model quality or optimized GPU kernel selection.
+
+Verify with `ruff check .` and `python -m pytest -q` before treating changes as validated. GPU throughput and peak memory must be measured on the target GPU, not inferred from CPU tests.
