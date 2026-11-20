@@ -5,6 +5,7 @@ No generated code is executed and no repository files are modified.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 from pathlib import Path
 
@@ -35,6 +36,24 @@ def explore(root: Path, query: str, *, limit: int = 20) -> list[dict[str, object
                 if len(results) >= limit:
                     return results
     return results
+
+
+def preview_patch(root: Path, relative_path: str, proposed: str) -> str:
+    """Preview a proposed full-file replacement; never write it to disk."""
+    root = root.resolve(strict=True)
+    relative = Path(relative_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Unsafe repository path")
+    path = root / relative
+    if path.is_symlink() or not path.resolve().is_relative_to(root):
+        raise ValueError("Path escapes repository")
+    if not path.is_file() or path.stat().st_size > 1_000_000:
+        raise ValueError("Expected an existing source file under 1 MB")
+    before = path.read_text(encoding="utf-8")
+    return "".join(difflib.unified_diff(
+        before.splitlines(keepends=True), proposed.splitlines(keepends=True),
+        fromfile=f"a/{relative.as_posix()}", tofile=f"b/{relative.as_posix()}",
+    ))
 
 
 def main() -> None:
