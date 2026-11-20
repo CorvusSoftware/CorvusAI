@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from corvusai.agent import explore
+from corvusai.agent import explore, preview_patch
 from corvusai.training.audit import audit
 
 
@@ -62,3 +62,17 @@ def test_manifest_audit_rejects_traversal_and_symlink(tmp_path):
     report = audit(manifest)
     assert not report["passed"]
     assert report["unsafe_paths"] == ["../outside.py", "alias.py"]
+
+
+def test_patch_preview_does_not_write(tmp_path):
+    source = tmp_path / "sample.py"
+    source.write_text("x = 1\n", encoding="utf-8")
+    diff = preview_patch(tmp_path, "sample.py", "x = 2\n")
+    assert "-x = 1" in diff
+    assert "+x = 2" in diff
+    assert source.read_text(encoding="utf-8") == "x = 1\n"
+
+
+def test_patch_preview_rejects_traversal(tmp_path):
+    with pytest.raises(ValueError):
+        preview_patch(tmp_path, "../outside.py", "bad")
