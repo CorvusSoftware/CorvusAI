@@ -52,3 +52,24 @@ def test_modern_train_resume_and_generate(tmp_path: Path, capsys):
     with pytest.raises(ValueError, match="mismatch"):
         train_bpe(corpus, tokenizer_path, output, steps=3, resume=True,
                   **{**options, "width": 32})
+
+
+def test_modern_loss_backpropagates():
+    torch.manual_seed(5)
+    model = ModernCorvusTransformer(ModernConfig(
+        vocab_size=32, context_length=8, width=16, heads=4, kv_heads=2, layers=1,
+    ))
+    tokens = torch.randint(0, 32, (2, 6))
+    loss = model.loss(tokens)
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert model.tokens.weight.grad is not None
+    assert torch.isfinite(model.tokens.weight.grad).all()
+
+
+def test_modern_rejects_excessive_context():
+    model = ModernCorvusTransformer(ModernConfig(
+        vocab_size=32, context_length=4, width=16, heads=4, kv_heads=2, layers=1,
+    ))
+    with pytest.raises(ValueError, match="context length"):
+        model(torch.randint(0, 32, (1, 5)))
