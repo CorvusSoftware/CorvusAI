@@ -41,12 +41,16 @@ def test_modern_train_resume_and_generate(tmp_path: Path, capsys):
     assert metrics["step_seconds"] > 0
     assert metrics["train_tokens_per_second"] > 0
     assert metrics["model_parameters"] > 0
+    metrics_path = output / "metrics.jsonl"
+    assert json.loads(metrics_path.read_text(encoding="utf-8").strip())["step"] == 1
     state = torch.load(output / "latest.pt", weights_only=True)
     assert state["format"] == "corvus-modern-bpe-checkpoint-v1"
     assert state["step"] == 1
     resumed = train_bpe(corpus, tokenizer_path, output, steps=2, resume=True,
                         **options)
     assert len(resumed) == 1
+    recorded = [json.loads(line) for line in metrics_path.read_text(encoding="utf-8").splitlines()]
+    assert [entry["step"] for entry in recorded] == [1, 2]
     session = BrainSession(output / "latest.pt", tokenizer_path=tokenizer_path)
     assert session.complete("def ", max_new_tokens=2).startswith("def ")
     with pytest.raises(ValueError, match="mismatch"):
