@@ -153,3 +153,17 @@ The check runs before optimizer steps and leaves training-only runs
 unchanged. It is not a near-duplicate detector: copied functions,
 reformatted code and similar files still require a separate leakage
 audit. Prepare validation splits by repository/project where possible.
+
+## Best held-out validation results
+
+The training comparison CLI now reports `best_validation_step`,
+`best_validation_loss`, `best_validation_perplexity` (when recorded),
+`last_validation_step`, `last_validation_loss`, and
+`validation_evaluations` for runs with held-out measurements.
+The best step minimizes validation loss across recorded evaluation
+steps, independently of the `--warmup` exclusion used for throughput
+statistics. It is not necessarily the final checkpoint: the BPE trainer
+still writes only `latest.pt` and does not preserve a separate
+best-validation checkpoint. Compare validation losses only for
+compatible tokenizers and held-out datasets; the CLI warns when the
+validation dataset fingerprint is missing or differs.
