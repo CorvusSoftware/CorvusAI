@@ -42,6 +42,22 @@ def _load_documents(
     return documents, digest.hexdigest()
 
 
+
+def _corpus_file_hashes(corpus: Path) -> set[str]:
+    """Fingerprint individual source files, independent of their relative names."""
+    paths = sorted(corpus.rglob("*.py")) if corpus.is_dir() else [corpus]
+    return {hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
+def _check_validation_overlap(corpus: Path, validation_corpus: Path) -> None:
+    """Reject exact file duplicates across training and held-out corpora."""
+    overlap = _corpus_file_hashes(corpus) & _corpus_file_hashes(validation_corpus)
+    if overlap:
+        raise ValueError(
+            f"Training and validation corpora share {len(overlap)} identical file(s)"
+        )
+
+
 def _sample(documents: list[torch.Tensor], batch_size: int, context_length: int,
             target: torch.device) -> torch.Tensor:
     # Choose a valid window uniformly, without crossing document boundaries.
@@ -105,6 +121,7 @@ def train_bpe(
         )
         if validation_sha256 == corpus_sha256:
             raise ValueError("Validation corpus must differ from training corpus")
+        _check_validation_overlap(corpus, validation_corpus)
     random.seed(seed)
     torch.manual_seed(seed)
     if target.type == "cuda":
