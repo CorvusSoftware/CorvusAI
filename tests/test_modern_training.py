@@ -128,3 +128,53 @@ def test_modern_heldout_validation_and_resume(tmp_path: Path):
     with pytest.raises(ValueError, match="differ"):
         train_bpe(corpus, tokenizer_path, tmp_path / "invalid", steps=1,
                   **{**options, "validation_corpus": corpus})
+
+
+def test_validation_rejects_duplicate_file_under_different_name(tmp_path: Path):
+    train_dir = tmp_path / "train"
+    heldout_dir = tmp_path / "heldout"
+    train_dir.mkdir()
+    heldout_dir.mkdir()
+    source = b"def repeated(x):\n    return x + 1\n" * 8
+    (train_dir / "original.py").write_bytes(source)
+    (heldout_dir / "renamed.py").write_bytes(source)
+    tokenizer_path = tmp_path / "tokenizer.json"
+    ByteBPE.train([source], merges=8).save(tokenizer_path)
+    with pytest.raises(ValueError, match="identical file"):
+        train_bpe(train_dir, tokenizer_path, tmp_path / "output",
+                  steps=1, context_length=8, validation_corpus=heldout_dir)
+
+
+def test_validation_rejects_partial_directory_overlap(tmp_path: Path):
+    train_dir = tmp_path / "train"
+    heldout_dir = tmp_path / "heldout"
+    train_dir.mkdir()
+    heldout_dir.mkdir()
+    shared = b"def shared(x):\n    return x * 2\n" * 8
+    (train_dir / "a.py").write_bytes(shared)
+    (train_dir / "b.py").write_bytes(b"def only_train():\n    return 1\n" * 8)
+    (heldout_dir / "different_name.py").write_bytes(shared)
+    (heldout_dir / "only_validation.py").write_bytes(
+        b"def only_validation():\n    return 2\n" * 8,
+    )
+    tokenizer_path = tmp_path / "tokenizer.json"
+    ByteBPE.train([shared], merges=8).save(tokenizer_path)
+    with pytest.raises(ValueError, match="identical file"):
+        train_bpe(train_dir, tokenizer_path, tmp_path / "output",
+                  steps=1, context_length=8, validation_corpus=heldout_dir)
+
+
+def test_validation_allows_disjoint_files(tmp_path: Path):
+    train_dir = tmp_path / "train"
+    heldout_dir = tmp_path / "heldout"
+    train_dir.mkdir()
+    heldout_dir.mkdir()
+    train_data = b"def train_only(x):\n    return x + 1\n" * 8
+    (train_dir / "a.py").write_bytes(train_data)
+    (heldout_dir / "b.py").write_bytes(b"def validation_only(y):\n    return y - 1\n" * 8)
+    tokenizer_path = tmp_path / "tokenizer.json"
+    ByteBPE.train([train_data], merges=8).save(tokenizer_path)
+    losses = train_bpe(train_dir, tokenizer_path, tmp_path / "output",
+                       steps=1, context_length=8, batch_size=1,
+                       validation_corpus=heldout_dir)
+    assert len(losses) == 1
