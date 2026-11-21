@@ -152,6 +152,7 @@ def train_bpe(
     checkpoint = output / "latest.pt"
     metrics_path = output / "metrics.jsonl"
     completed = 0
+    best_validation_loss = None
     if resume:
         if not checkpoint.is_file():
             raise FileNotFoundError(checkpoint)
@@ -196,6 +197,7 @@ def train_bpe(
             scheduler.last_epoch = int(state["step"])
             scheduler._step_count = int(state["step"]) + 1
         completed = int(state["step"])
+        best_validation_loss = state.get("best_validation_loss")
         torch.set_rng_state(state["cpu_rng"].cpu())
         if target.type == "cuda" and state.get("cuda_rng") is not None:
             torch.cuda.set_rng_state(state["cuda_rng"].cpu(), device=target)
@@ -255,13 +257,11 @@ def train_bpe(
             "warmup_steps": warmup_steps,
             "decay_steps": decay_steps,
             "validation_sha256": validation_sha256,
+            "best_validation_loss": best_validation_loss,
             "eval_every": (eval_every or 1) if validation_documents is not None else None,
             "cpu_rng": torch.get_rng_state(),
             "cuda_rng": torch.cuda.get_rng_state(target) if target.type == "cuda" else None,
         }
-        temporary = output / "latest.tmp"
-        torch.save(state, temporary)
-        os.replace(temporary, checkpoint)
         trained_tokens = batch_size * context_length * gradient_accumulation
         metrics = {"step": step + 1, "train_loss": accumulated, "device": str(target),
                    "learning_rate": optimizer.param_groups[0]["lr"],
@@ -294,6 +294,21 @@ def train_bpe(
             metrics["validation_perplexity"] = math.exp(metrics["validation_loss"])
             metrics["validation_tokens"] = total_tokens
             metrics["validation_sha256"] = validation_sha256
+        improved = (
+            "validation_loss" in metrics
+            and (best_validation_loss is None
+                 or metrics["validation_loss"] < best_validation_loss)
+        )
+        if improved:
+            best_validation_loss = metrics["validation_loss"]
+        state["best_validation_loss"] = best_validation_loss
+        temporary = output / "latest.tmp"
+        torch.save(state, temporary)
+        os.replace(temporary, checkpoint)
+        if improved:
+            best_temporary = output / "best.tmp"
+            torch.save(state, best_temporary)
+            os.replace(best_temporary, output / "best.pt")
         if target.type == "cuda":
             metrics["peak_vram_mib"] = round(torch.cuda.max_memory_allocated(target) / 2**20, 1)
         metrics_line = json.dumps(metrics)
