@@ -190,7 +190,7 @@ def train_bpe(
                 continue
             entry = json.loads(line)
             if not isinstance(entry.get("step"), int):
-                raise ValueError("Invalid training metrics step")
+                raise TypeError("Invalid training metrics step")
             if entry["step"] <= completed:
                 retained.append(line)
         metrics_path.write_text(
