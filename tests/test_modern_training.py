@@ -116,9 +116,15 @@ def test_modern_heldout_validation_and_resume(tmp_path: Path):
     assert records[1]["validation_loss"] > 0
     assert records[1]["validation_perplexity"] > 1
     assert records[1]["validation_tokens"] > 0
+    best_path = output / "best.pt"
+    best_state = torch.load(best_path, weights_only=True)
+    assert best_state["step"] == 2
+    assert best_state["best_validation_loss"] == pytest.approx(records[1]["validation_loss"])
     train_bpe(corpus, tokenizer_path, output, steps=3, resume=True, **options)
     state = torch.load(output / "latest.pt", weights_only=True)
     assert state["eval_every"] == 2
+    assert state["best_validation_loss"] == pytest.approx(records[1]["validation_loss"])
+    assert torch.load(best_path, weights_only=True)["step"] == 2
     with pytest.raises(ValueError, match="mismatch"):
         train_bpe(corpus, tokenizer_path, output, steps=4, resume=True,
                   **{**options, "eval_every": 1})
@@ -178,3 +184,16 @@ def test_validation_allows_disjoint_files(tmp_path: Path):
                        steps=1, context_length=8, batch_size=1,
                        validation_corpus=heldout_dir)
     assert len(losses) == 1
+
+
+def test_best_checkpoint_is_absent_without_validation(tmp_path: Path):
+    corpus = tmp_path / "train.py"
+    source = b"def train(x):\n    return x + 1\n" * 8
+    corpus.write_bytes(source)
+    tokenizer_path = tmp_path / "tokenizer.json"
+    ByteBPE.train([source], merges=8).save(tokenizer_path)
+    output = tmp_path / "run"
+    train_bpe(corpus, tokenizer_path, output, steps=1,
+              context_length=8, batch_size=1)
+    assert (output / "latest.pt").is_file()
+    assert not (output / "best.pt").exists()
