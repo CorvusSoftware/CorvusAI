@@ -180,3 +180,12 @@ only happens on the configured `--eval-every` cadence. An existing
 `best.pt` should be kept alongside `latest.pt` when transferring a
 run between machines. A fresh run in an existing output directory
 should use a new folder to avoid mixing artifacts from separate runs.
+
+## Fresh-run checkpoint hygiene
+
+Starting a new BPE training run without `--resume` clears any
+`best.pt` left in the output folder, so a previous experiment cannot
+masquerade as the best model of the new run. `latest.pt` is replaced
+when the new run saves its first step. Resuming with `--resume` does
+not delete the existing best checkpoint. Prefer a distinct output
+directory per experiment for complete artifact isolation.
