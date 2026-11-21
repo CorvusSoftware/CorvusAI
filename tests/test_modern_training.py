@@ -197,3 +197,22 @@ def test_best_checkpoint_is_absent_without_validation(tmp_path: Path):
               context_length=8, batch_size=1)
     assert (output / "latest.pt").is_file()
     assert not (output / "best.pt").exists()
+
+
+def test_fresh_training_clears_stale_best_checkpoint(tmp_path: Path):
+    corpus = tmp_path / "train.py"
+    validation = tmp_path / "validation.py"
+    source = b"def train(x):\n    return x + 1\n" * 8
+    corpus.write_bytes(source)
+    validation.write_bytes(b"def heldout(y):\n    return y * 2\n" * 8)
+    tokenizer_path = tmp_path / "tokenizer.json"
+    ByteBPE.train([source], merges=8).save(tokenizer_path)
+    output = tmp_path / "run"
+    options = {"context_length": 8, "batch_size": 1, "architecture": "modern",
+               "width": 16, "heads": 4, "kv_heads": 2, "layers": 1}
+    train_bpe(corpus, tokenizer_path, output, steps=1,
+              validation_corpus=validation, **options)
+    assert (output / "best.pt").is_file()
+    train_bpe(corpus, tokenizer_path, output, steps=1, **options)
+    assert (output / "latest.pt").is_file()
+    assert not (output / "best.pt").exists()
