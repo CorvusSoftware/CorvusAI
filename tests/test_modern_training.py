@@ -32,8 +32,8 @@ def test_modern_train_resume_and_generate(tmp_path: Path, capsys):
     corpus.write_bytes(b"def add(a, b):\n    return a + b\n" * 8)
     tokenizer_path = tmp_path / "tokenizer.json"
     ByteBPE.train([corpus.read_bytes()], merges=8).save(tokenizer_path)
-    options = dict(context_length=8, batch_size=1, architecture="modern",
-                   width=16, heads=4, kv_heads=2, layers=1, seed=23)
+    options = {"context_length": 8, "batch_size": 1, "architecture": "modern",
+               "width": 16, "heads": 4, "kv_heads": 2, "layers": 1, "seed": 23}
     output = tmp_path / "run"
     losses = train_bpe(corpus, tokenizer_path, output, steps=1, **options)
     assert len(losses) == 1
@@ -106,9 +106,9 @@ def test_modern_heldout_validation_and_resume(tmp_path: Path):
     tokenizer_path = tmp_path / "tokenizer.json"
     ByteBPE.train([corpus.read_bytes()], merges=8).save(tokenizer_path)
     output = tmp_path / "validation-run"
-    options = dict(context_length=8, batch_size=1, architecture="modern",
-                   width=16, heads=4, kv_heads=2, layers=1,
-                   validation_corpus=validation, eval_every=2)
+    options = {"context_length": 8, "batch_size": 1, "architecture": "modern",
+               "width": 16, "heads": 4, "kv_heads": 2, "layers": 1,
+               "validation_corpus": validation, "eval_every": 2}
     train_bpe(corpus, tokenizer_path, output, steps=2, **options)
     records = [json.loads(line) for line in
                (output / "metrics.jsonl").read_text(encoding="utf-8").splitlines()]
