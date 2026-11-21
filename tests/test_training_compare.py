@@ -93,3 +93,11 @@ def test_compare_preserves_consistent_metadata(tmp_path: Path):
     assert result["architecture"] == "modern"
     assert result["corpus_sha256"] == "abc"
     assert result["context_length"] == 8
+
+
+def test_compare_rejects_non_object_record(tmp_path: Path):
+    run = tmp_path / "non-object"
+    run.mkdir()
+    (run / "metrics.jsonl").write_text("[1, 2, 3]\n", encoding="utf-8")
+    with pytest.raises(TypeError, match="Expected metrics object"):
+        summarize(run)
