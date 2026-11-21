@@ -101,3 +101,44 @@ def test_compare_rejects_non_object_record(tmp_path: Path):
     (run / "metrics.jsonl").write_text("[1, 2, 3]\n", encoding="utf-8")
     with pytest.raises(TypeError, match="Expected metrics object"):
         summarize(run)
+
+
+def test_compare_selects_best_heldout_step_independent_of_warmup(tmp_path: Path):
+    run = tmp_path / "heldout"
+    base = {"train_loss": 1.0, "step_seconds": 1.0,
+            "train_tokens_per_second": 8.0}
+    _write_metrics(run, [
+        {**base, "step": 1, "validation_loss": 2.0,
+         "validation_perplexity": 7.4},
+        {**base, "step": 2},
+        {**base, "step": 3, "validation_loss": 1.2,
+         "validation_perplexity": 3.4},
+        {**base, "step": 4, "validation_loss": 1.5,
+         "validation_perplexity": 4.5},
+    ])
+    summary = summarize(run, warmup=2)
+    assert summary["validation_evaluations"] == 3
+    assert summary["best_validation_step"] == 3
+    assert summary["best_validation_loss"] == pytest.approx(1.2)
+    assert summary["best_validation_perplexity"] == pytest.approx(3.4)
+    assert summary["last_validation_step"] == 4
+    assert summary["last_validation_loss"] == pytest.approx(1.5)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -1, "bad", True])
+def test_compare_rejects_invalid_validation_loss(tmp_path: Path, invalid):
+    run = tmp_path / "bad-validation"
+    _write_metrics(run, [{"step": 1, "train_loss": 1.0,
+                          "step_seconds": 1.0, "train_tokens_per_second": 8.0,
+                          "validation_loss": invalid}])
+    with pytest.raises(ValueError, match="validation_loss"):
+        summarize(run)
+
+
+def test_compare_warns_on_different_validation_corpora():
+    base = {"device": "cpu", "context_length": 8, "batch_size": 1,
+            "gradient_accumulation": 1, "mixed_precision": False,
+            "corpus_sha256": "train", "tokenizer_sha256": "tok",
+            "validation_sha256": "validation-a"}
+    warnings = compatibility_warnings([base, {**base, "validation_sha256": "validation-b"}])
+    assert "Runs differ in validation_sha256" in warnings
