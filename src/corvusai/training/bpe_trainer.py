@@ -217,6 +217,8 @@ def train_bpe(
         )
     elif not resume:
         metrics_path.write_text("", encoding="utf-8")
+        # A fresh run must not expose a best checkpoint from an earlier run.
+        (output / "best.pt").unlink(missing_ok=True)
     losses: list[float] = []
     model.train()
     for step in range(completed, steps):
