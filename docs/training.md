@@ -167,3 +167,16 @@ still writes only `latest.pt` and does not preserve a separate
 best-validation checkpoint. Compare validation losses only for
 compatible tokenizers and held-out datasets; the CLI warns when the
 validation dataset fingerprint is missing or differs.
+
+## Best-validation checkpoint
+
+With `--validation-corpus`, training now writes `best.pt` whenever
+held-out loss strictly improves. `latest.pt` continues to be written
+at every optimizer step for resuming training. Both checkpoints contain
+the complete model and optimizer state, and the best loss is persisted
+in the latest checkpoint so resumed runs keep the previous best score.
+`best.pt` is not created when validation is disabled, and evaluation
+only happens on the configured `--eval-every` cadence. An existing
+`best.pt` should be kept alongside `latest.pt` when transferring a
+run between machines. A fresh run in an existing output directory
+should use a new folder to avoid mixing artifacts from separate runs.
