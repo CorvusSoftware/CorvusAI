@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 from pathlib import Path
 
@@ -53,13 +54,33 @@ def summarize(path: Path, *, warmup: int = 0) -> dict[str, object]:
             row["train_tokens_per_second"] for row in measured
         ),
     }
+    validation_records = [record for record in records if "validation_loss" in record]
+    for record in validation_records:
+        loss = record["validation_loss"]
+        if type(loss) not in (int, float) or not math.isfinite(loss) or loss < 0:
+            raise ValueError(f"Invalid validation_loss at step {record['step']}")
+        perplexity = record.get("validation_perplexity")
+        if (perplexity is not None and
+                (type(perplexity) not in (int, float)
+                 or not math.isfinite(perplexity) or perplexity < 1)):
+            raise ValueError(f"Invalid validation_perplexity at step {record['step']}")
+    if validation_records:
+        best = min(validation_records, key=lambda record: record["validation_loss"])
+        latest = validation_records[-1]
+        result["validation_evaluations"] = len(validation_records)
+        result["best_validation_step"] = best["step"]
+        result["best_validation_loss"] = best["validation_loss"]
+        result["last_validation_step"] = latest["step"]
+        result["last_validation_loss"] = latest["validation_loss"]
+        if "validation_perplexity" in best:
+            result["best_validation_perplexity"] = best["validation_perplexity"]
     if all("peak_vram_mib" in row for row in measured):
         result["max_peak_vram_mib"] = max(row["peak_vram_mib"] for row in measured)
     if all("model_parameters" in row for row in measured):
         result["model_parameters"] = measured[-1]["model_parameters"]
     for key in ("device", "architecture", "context_length", "batch_size",
                 "gradient_accumulation", "mixed_precision", "corpus_sha256",
-                "tokenizer_sha256"):
+                "tokenizer_sha256", "validation_sha256"):
         values = [record.get(key) for record in records]
         if all(value is not None and value == values[0] for value in values):
             result[key] = values[0]
@@ -73,7 +94,7 @@ def compatibility_warnings(summaries: list[dict[str, object]]) -> list[str]:
     warnings = []
     for key in ("device", "context_length", "batch_size",
                 "gradient_accumulation", "mixed_precision", "corpus_sha256",
-                "tokenizer_sha256"):
+                "tokenizer_sha256", "validation_sha256"):
         values = [summary.get(key) for summary in summaries]
         if any(value is None for value in values):
             warnings.append(f"Cannot verify comparable {key}: missing metadata")
