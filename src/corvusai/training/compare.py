@@ -22,7 +22,7 @@ def summarize(path: Path, *, warmup: int = 0) -> dict[str, object]:
         except json.JSONDecodeError as error:
             raise ValueError(f"Invalid JSON at line {number}") from error
         if not isinstance(entry, dict):
-            raise ValueError(f"Expected metrics object at line {number}")
+            raise TypeError(f"Expected metrics object at line {number}")
         records.append(entry)
     if not records:
         raise ValueError(f"No metrics in {metrics_path}")
