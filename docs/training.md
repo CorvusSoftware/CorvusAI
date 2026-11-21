@@ -142,3 +142,14 @@ this field can be resumed with the default every-step frequency only.
 A training corpus and validation corpus cannot resolve to the same path,
 and matching corpus fingerprints are also rejected. These checks do not
 guarantee the absence of near-duplicate data leakage.
+
+## Exact duplicate protection
+
+When `--validation-corpus` is provided, the BPE trainer hashes the
+bytes of every input source file in both corpora and rejects any exact
+cross-split match, even when filenames or directory structures differ.
+This also catches a shared file within otherwise distinct directories.
+The check runs before optimizer steps and leaves training-only runs
+unchanged. It is not a near-duplicate detector: copied functions,
+reformatted code and similar files still require a separate leakage
+audit. Prepare validation splits by repository/project where possible.
